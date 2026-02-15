@@ -15,7 +15,7 @@ import { MultimeterEditor } from './components/MultimeterEditor';
 import { IC555Pinout } from './components/IC555Pinout';
 import { ComponentInfoPanel } from './components/ComponentInfoPanel';
 import { analyzeCircuit } from './services/geminiService';
-import { RotateCw, Trash2, Bot, MessageSquare, Info, BookOpen, ChevronDown, Sun, Moon, Globe, TriangleAlert, Eye, EyeOff, X, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import { RotateCw, Trash2, Bot, MessageSquare, Info, BookOpen, ChevronDown, Sun, Moon, Globe, TriangleAlert, Eye, EyeOff, X, ZoomIn, ZoomOut, Move, Hand, MousePointer2 } from 'lucide-react';
 import { PRESETS, Preset } from './presets';
 
 interface DrawingWireState {
@@ -36,9 +36,13 @@ export default function App() {
   
   // Viewport State (Zoom & Pan)
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select'); // New mode state
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point>({ x: 0, y: 0 });
   const [spacePressed, setSpacePressed] = useState(false);
+
+  // Touch Zoom State
+  const [pinchDist, setPinchDist] = useState<number | null>(null);
 
   // Multi-selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -66,6 +70,9 @@ export default function App() {
 
   // Refs
   const dragStartSnapshot = useRef<{ components: ComponentData[], wires: Wire[] } | null>(null);
+  const canvasRef = useRef<SVGSVGElement>(null);
+  // Pointer cache for multi-touch
+  const pointers = useRef<Map<number, { x: number, y: number }>>(new Map());
 
   // AI State
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
@@ -85,8 +92,6 @@ export default function App() {
   const [editingPotentiometerId, setEditingPotentiometerId] = useState<string | null>(null);
   const [editingMultimeterId, setEditingMultimeterId] = useState<string | null>(null);
   const [viewingIC555Id, setViewingIC555Id] = useState<string | null>(null); 
-
-  const canvasRef = useRef<SVGSVGElement>(null);
 
   const t = TRANSLATIONS[lang];
   const isDark = theme === 'dark';
@@ -158,10 +163,6 @@ export default function App() {
       saveToHistory();
       const idMap: Record<string, string> = {};
       
-      // Center the preset based on current view
-      const centerX = 400; // rough center of preset space
-      const centerY = 300;
-      
       const newComponents = preset.components.map(c => {
           const newId = generateId();
           idMap[c.id] = newId;
@@ -190,6 +191,7 @@ export default function App() {
 
   const addComponent = (type: ComponentType) => {
     saveToHistory();
+    setInteractionMode('select'); // Auto switch to select mode when adding
     
     // Add relative to current view center
     const viewportCenter = {
@@ -251,13 +253,10 @@ export default function App() {
   };
 
   // Convert Screen Pixel Coordinates to World Coordinates (taking zoom/pan into account)
-  const getCanvasCoordinates = (e: React.MouseEvent | MouseEvent) => {
+  const getCanvasCoordinates = (clientX: number, clientY: number) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
     
-    const clientX = e.clientX;
-    const clientY = e.clientY;
-
     // Apply inverse transform
     const x = (clientX - rect.left - view.x) / view.zoom;
     const y = (clientY - rect.top - view.y) / view.zoom;
@@ -303,25 +302,46 @@ export default function App() {
       setView({ x: newX, y: newY, zoom: newScale });
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Middle click (button 1) or Space+LeftClick for panning
-    if (e.button === 1 || (spacePressed && e.button === 0)) {
+  // --- POINTER EVENTS (TOUCH & MOUSE) ---
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Register pointer
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const target = e.target as Element;
+    target.setPointerCapture(e.pointerId);
+
+    // Multi-touch Zoom Check
+    if (pointers.current.size === 2) {
+        const values = Array.from(pointers.current.values());
+        const p1 = values[0] as { x: number; y: number };
+        const p2 = values[1] as { x: number; y: number };
+        const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        setPinchDist(dist);
+        setIsPanning(false); // Cancel panning if zooming
+        setDrawingWire(null);
+        setIsDraggingComponents(false);
+        return;
+    }
+
+    // Panning Mode Check (Middle Click, Spacebar, or explicit Pan Mode)
+    if (e.button === 1 || (spacePressed && e.button === 0) || interactionMode === 'pan') {
         setIsPanning(true);
         setLastPanPoint({ x: e.clientX, y: e.clientY });
         e.preventDefault();
         return;
     }
 
-    const pt = getCanvasCoordinates(e);
+    // Normal Selection / Interaction Logic
+    const pt = getCanvasCoordinates(e.clientX, e.clientY);
     const hitTestOrder = [...sortedComponents].reverse();
 
-    // 1. Check Pins First (for wiring)
+    // 1. Check Pins (Wiring)
     for (const comp of hitTestOrder) {
       const pins = COMPONENT_PINS[comp.type] || [];
       for (const pin of pins) {
         const absPos = getPinAbsolutePosition(comp, pin.id);
         const dist = Math.sqrt(Math.pow(pt.x - absPos.x, 2) + Math.pow(pt.y - absPos.y, 2));
-        if (dist < 10) {
+        if (dist < 15) { // Increased hit area for touch
           e.stopPropagation();
           if (drawingWire) {
               if (comp.id !== drawingWire.compId || pin.id !== drawingWire.pinId) {
@@ -345,14 +365,14 @@ export default function App() {
       }
     }
 
-    // 2. Check if drawing wire and clicked empty space -> Add Waypoint
+    // 2. Add Waypoint
     if (drawingWire) {
         const snappedPt = { x: snapToGrid(pt.x), y: snapToGrid(pt.y) };
         setDrawingWire(prev => prev ? { ...prev, waypoints: [...prev.waypoints, snappedPt] } : null);
         return;
     }
 
-    // 3. Check Components
+    // 3. Components
     const clickedComp = hitTestOrder.find(c => isPointInsideComponent(pt, c));
     if (clickedComp) {
       e.stopPropagation();
@@ -366,13 +386,33 @@ export default function App() {
       setIsDraggingComponents(true);
       setDragStartMouse(pt);
     } else {
-      // 4. Background Click -> Selection Box
+      // 4. Selection Box
       setSelectedIds(new Set());
       setSelectionBox({ start: pt, end: pt });
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handlePointerMove = (e: React.PointerEvent) => {
+    // Update pointer position record
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Handle Pinch Zoom
+    if (pointers.current.size === 2 && pinchDist !== null) {
+        const values = Array.from(pointers.current.values());
+        const p1 = values[0] as { x: number; y: number };
+        const p2 = values[1] as { x: number; y: number };
+        const newDist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        
+        const scaleBy = newDist / pinchDist;
+        const newZoom = Math.max(0.2, Math.min(5, view.zoom * scaleBy));
+        
+        // Simple zoom to center of screen for stability during pinch
+        // (Improving this to zoom to centroid of pinch is better but complex for this snippet)
+        setView(prev => ({ ...prev, zoom: newZoom }));
+        setPinchDist(newDist);
+        return;
+    }
+
     // Handle Panning
     if (isPanning) {
         const dx = e.clientX - lastPanPoint.x;
@@ -382,7 +422,7 @@ export default function App() {
         return;
     }
 
-    const pt = getCanvasCoordinates(e);
+    const pt = getCanvasCoordinates(e.clientX, e.clientY);
     setMousePos({ x: snapToGrid(pt.x), y: snapToGrid(pt.y) }); 
 
     if (isDraggingComponents) {
@@ -405,9 +445,14 @@ export default function App() {
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent) => {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    
+    if (pointers.current.size < 2) setPinchDist(null);
+
     if (isPanning) {
-        setIsPanning(false);
+        // If no pointers left, stop panning
+        if (pointers.current.size === 0) setIsPanning(false);
         return;
     }
 
@@ -831,7 +876,7 @@ export default function App() {
         const wireBaseColor = isDark ? (isSimulating ? '#4ade80' : '#94a3b8') : (isSimulating ? '#16a34a' : '#475569');
 
         return (
-            <g key={wire.id} onMouseDown={(e) => { e.stopPropagation(); setSelectedIds(new Set(e.shiftKey ? [...selectedIds, wire.id] : [wire.id])); }} className="cursor-pointer group">
+            <g key={wire.id} onPointerDown={(e) => { e.stopPropagation(); setSelectedIds(new Set(e.shiftKey ? [...selectedIds, wire.id] : [wire.id])); }} className="cursor-pointer group">
                 <path d={pathData} stroke="transparent" strokeWidth="15" fill="none" />
                 <path d={pathData} stroke={isSelected ? '#3b82f6' : wireBaseColor} strokeWidth={isSelected ? "4" : "3"} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 {isSimulating && <path d={pathData} stroke={flowColor} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="10, 10" className="animate-flow opacity-80 pointer-events-none" style={{ animationDuration: `${animSpeed}s` }} />}
@@ -851,6 +896,24 @@ export default function App() {
         </div>
         
         <div className="flex space-x-2 items-center">
+             {/* Interaction Mode Toggles (Mobile/Tablet Support) */}
+             <div className="flex bg-slate-800 rounded p-1 mr-2 border border-slate-700">
+                <button 
+                    onClick={() => setInteractionMode('select')}
+                    className={`p-1.5 rounded transition-colors ${interactionMode === 'select' ? 'bg-lab-accent text-black' : 'text-slate-400 hover:text-white'}`}
+                    title="Selection Mode"
+                >
+                    <MousePointer2 size={18} />
+                </button>
+                <button 
+                    onClick={() => setInteractionMode('pan')}
+                    className={`p-1.5 rounded transition-colors ${interactionMode === 'pan' ? 'bg-lab-accent text-black' : 'text-slate-400 hover:text-white'}`}
+                    title="Pan Mode (Drag to move)"
+                >
+                    <Hand size={18} />
+                </button>
+            </div>
+
             {/* Lang Toggle */}
             <button onClick={() => setLang(l => l === 'en' ? 'es' : 'en')} className={`p-2 rounded hover:bg-black/10 flex items-center gap-1 text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                 <Globe size={16}/> {lang.toUpperCase()}
@@ -920,13 +983,14 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden relative">
         <Toolbox onAdd={addComponent} theme={theme} lang={lang} />
 
-        <div className={`flex-1 relative cursor-crosshair overflow-hidden ${isDark ? 'bg-lab-dark' : 'bg-slate-50'}`}>
+        <div className={`flex-1 relative cursor-crosshair overflow-hidden touch-none ${isDark ? 'bg-lab-dark' : 'bg-slate-50'}`}>
           <svg 
             ref={canvasRef} 
-            className={`w-full h-full block ${isDark ? 'text-white' : 'text-slate-900'} ${isPanning ? 'cursor-grabbing' : ''}`} 
-            onMouseDown={handleMouseDown} 
-            onMouseMove={handleMouseMove} 
-            onMouseUp={handleMouseUp}
+            className={`w-full h-full block ${isDark ? 'text-white' : 'text-slate-900'} ${isPanning || interactionMode === 'pan' ? 'cursor-grab active:cursor-grabbing' : ''}`} 
+            onPointerDown={handlePointerDown} 
+            onPointerMove={handlePointerMove} 
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
             onWheel={handleWheel}
           >
             <defs>{renderDefs()}</defs>
@@ -976,7 +1040,7 @@ export default function App() {
           {/* Zoom/Pan Hint Overlay (Transient) */}
           <div className="absolute bottom-4 left-4 pointer-events-none text-xs text-slate-500 bg-black/20 p-2 rounded backdrop-blur-sm">
               Zoom: {(view.zoom * 100).toFixed(0)}% <br/>
-              Pan: Space + Drag or Middle Click
+              Pan: Space + Drag or Hand Tool
           </div>
 
           {editingResistorId && <ResistorEditor bands={components.find(c => c.id === editingResistorId)?.properties.bands || []} onChange={handleResistorEdit} onClose={() => setEditingResistorId(null)} value={formatResistance(calculateResistance(components.find(c => c.id === editingResistorId)?.properties.bands || []))} />}
