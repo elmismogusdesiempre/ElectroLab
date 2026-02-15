@@ -334,7 +334,7 @@ const MultimeterSVG: React.FC<{ value: string; mode: string; onModeChange?: (m: 
                 <g 
                     transform="translate(-47, 0)" 
                     onClick={(e) => { e.stopPropagation(); onModeChange && onModeChange('V'); }} 
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()} // Stop drag/deselect
                     className="cursor-pointer hover:opacity-80"
                 >
                     <rect x="0" y="0" width="24" height="12" rx="2" fill={isVolt ? buttonActive : buttonInactive} stroke="none" />
@@ -345,7 +345,7 @@ const MultimeterSVG: React.FC<{ value: string; mode: string; onModeChange?: (m: 
                 <g 
                     transform="translate(-12, 0)" 
                     onClick={(e) => { e.stopPropagation(); onModeChange && onModeChange('OHM'); }} 
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()} // Stop drag/deselect
                     className="cursor-pointer hover:opacity-80"
                 >
                     <rect x="0" y="0" width="24" height="12" rx="2" fill={isOhm ? buttonActive : buttonInactive} stroke="none" />
@@ -356,7 +356,7 @@ const MultimeterSVG: React.FC<{ value: string; mode: string; onModeChange?: (m: 
                 <g 
                     transform="translate(23, 0)" 
                     onClick={(e) => { e.stopPropagation(); onModeChange && onModeChange('A'); }} 
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()} // Stop drag/deselect
                     className="cursor-pointer hover:opacity-80"
                 >
                     <rect x="0" y="0" width="24" height="12" rx="2" fill={isAmp ? buttonActive : buttonInactive} stroke="none" />
@@ -494,7 +494,8 @@ export const ComponentRenderer: React.FC<Props> = ({ component, isSelected, onEd
                 <g 
                     transform="translate(40, -50) rotate(0)" 
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit && onEdit(); }}
-                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} // Stop event to prevent deselect in App.tsx
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} // Redundant but safe
                     className="cursor-pointer hover:opacity-80"
                 >
                     <circle r="12" fill={isToggleable ? "#4ade80" : "#38bdf8"} />

@@ -1,11 +1,10 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { GRID_SIZE, COMPONENT_PINS, TRANSLATIONS } from './constants';
+import { GRID_SIZE, COMPONENT_PINS, TRANSLATIONS, COMPONENT_INFO } from './constants';
 import { ComponentData, ComponentType, Wire, Point, ResistorBandColor, Pin } from './types';
 import { generateId, snapToGrid, getPinAbsolutePosition, calculateResistance, formatResistance, formatCapacitance, formatCurrent, getWirePath, createObstacleMap, identifyWireNets, generatePathData, measureResistance, solveCircuit, detectShortCircuit } from './utils/circuitUtils';
 import { ComponentRenderer } from './components/ComponentRenderer';
 import { Toolbox } from './components/Toolbox';
-import { Instruments } from './components/Instruments';
 import { ResistorEditor } from './components/ResistorEditor';
 import { LEDEditor } from './components/LEDEditor';
 import { CapacitorEditor } from './components/CapacitorEditor';
@@ -15,7 +14,7 @@ import { MultimeterEditor } from './components/MultimeterEditor';
 import { IC555Pinout } from './components/IC555Pinout';
 import { ComponentInfoPanel } from './components/ComponentInfoPanel';
 import { analyzeCircuit } from './services/geminiService';
-import { RotateCw, Trash2, Bot, MessageSquare, Info, BookOpen, ChevronDown, Sun, Moon, Globe, TriangleAlert, Eye, EyeOff, X, ZoomIn, ZoomOut, Move, Hand, MousePointer2 } from 'lucide-react';
+import { RotateCw, Trash2, Bot, MessageSquare, Info, BookOpen, ChevronDown, Sun, Moon, Globe, TriangleAlert, Eye, EyeOff, X, ZoomIn, ZoomOut, Move, Hand, MousePointer2, Play, Square, Gauge, Zap } from 'lucide-react';
 import { PRESETS, Preset } from './presets';
 
 interface DrawingWireState {
@@ -24,6 +23,13 @@ interface DrawingWireState {
     startPt: Point;
     waypoints: Point[];
 }
+
+// Unified Panel State
+type PanelState = 
+    | { type: 'NONE' }
+    | { type: 'INFO'; data: { title: string; description: string; tips?: string; itemType: 'component' | 'preset' } }
+    | { type: 'EDITOR'; componentId: string }
+    | { type: 'PINOUT'; componentId: string };
 
 export default function App() {
   const [components, setComponents] = useState<ComponentData[]>([]);
@@ -36,7 +42,7 @@ export default function App() {
   
   // Viewport State (Zoom & Pan)
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
-  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select'); // New mode state
+  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select'); 
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point>({ x: 0, y: 0 });
   const [spacePressed, setSpacePressed] = useState(false);
@@ -65,13 +71,12 @@ export default function App() {
   // Safety Alert State
   const [safetyAlert, setSafetyAlert] = useState<{ title: string; message: string } | null>(null);
   
-  // Preset Info State
-  const [presetInfo, setPresetInfo] = useState<{ title: string; description: string } | null>(null);
+  // Unified Side Panel State (Replaces individual states for Info, ResistorEditor, etc.)
+  const [activePanel, setActivePanel] = useState<PanelState>({ type: 'NONE' });
 
   // Refs
   const dragStartSnapshot = useRef<{ components: ComponentData[], wires: Wire[] } | null>(null);
   const canvasRef = useRef<SVGSVGElement>(null);
-  // Pointer cache for multi-touch
   const pointers = useRef<Map<number, { x: number, y: number }>>(new Map());
 
   // AI State
@@ -81,20 +86,38 @@ export default function App() {
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   // UI State
-  const [showInfoPanel, setShowInfoPanel] = useState(true);
   const [presetsMenuOpen, setPresetsMenuOpen] = useState(false);
-
-  // Editors State
-  const [editingResistorId, setEditingResistorId] = useState<string | null>(null);
-  const [editingLEDId, setEditingLEDId] = useState<string | null>(null);
-  const [editingCapacitorId, setEditingCapacitorId] = useState<string | null>(null);
-  const [editingACSourceId, setEditingACSourceId] = useState<string | null>(null);
-  const [editingPotentiometerId, setEditingPotentiometerId] = useState<string | null>(null);
-  const [editingMultimeterId, setEditingMultimeterId] = useState<string | null>(null);
-  const [viewingIC555Id, setViewingIC555Id] = useState<string | null>(null); 
 
   const t = TRANSLATIONS[lang];
   const isDark = theme === 'dark';
+
+  // --- Helper: Panel Management ---
+  const closePanel = useCallback(() => {
+      setActivePanel({ type: 'NONE' });
+  }, []);
+
+  const showInfo = useCallback((title: string, description: string, tips?: string, itemType: 'component' | 'preset' = 'component') => {
+      setActivePanel({
+          type: 'INFO',
+          data: { title, description, tips, itemType }
+      });
+  }, []);
+
+  const recallCurrentInfo = useCallback(() => {
+      if (selectedIds.size === 1) {
+          const compId = Array.from(selectedIds)[0];
+          const comp = components.find(c => c.id === compId);
+          if (comp) {
+              const info = COMPONENT_INFO[comp.type];
+              if (info) {
+                  showInfo(info.title, info.description, info.tips, 'component');
+              }
+          }
+      } else {
+          showInfo(t.title, "Select a component to see details or choose a preset to load an experiment.", undefined, 'component');
+      }
+  }, [selectedIds, components, showInfo, t.title]);
+
 
   // --- Z-Index / Rendering Order Logic ---
   const sortedComponents = useMemo(() => {
@@ -156,6 +179,7 @@ export default function App() {
     }
     setHistory(prev => prev.slice(0, -1));
     setSelectedIds(new Set());
+    closePanel();
   };
 
   // --- Handlers ---
@@ -183,10 +207,7 @@ export default function App() {
       // Reset view to center roughly
       setView({ x: 0, y: 0, zoom: 1 });
 
-      setPresetInfo({
-          title: preset.name,
-          description: preset.description
-      });
+      showInfo(preset.name, preset.description, "Tip: Use the 'Info' button to see this again.", 'preset');
   };
 
   const addComponent = (type: ComponentType) => {
@@ -240,6 +261,12 @@ export default function App() {
 
     setComponents([...components, newComp]);
     setSelectedIds(new Set([newComp.id]));
+
+    // Automatically show info when adding, replacing any open panel
+    const info = COMPONENT_INFO[type];
+    if (info) {
+        showInfo(info.title, info.description, info.tips, 'component');
+    }
   };
   
   const handleRotate = (id: string) => {
@@ -381,8 +408,27 @@ export default function App() {
           return;
       }
       dragStartSnapshot.current = { components, wires };
+      
       const newSelection = new Set(selectedIds);
-      if (!newSelection.has(clickedComp.id)) setSelectedIds(new Set([clickedComp.id]));
+      if (!newSelection.has(clickedComp.id)) {
+          setSelectedIds(new Set([clickedComp.id]));
+          // Trigger Info Notification on Select, unless it's the one we are already editing
+          if (activePanel.type !== 'EDITOR' || activePanel.componentId !== clickedComp.id) {
+            const info = COMPONENT_INFO[clickedComp.type];
+            if (info) {
+                showInfo(info.title, info.description, info.tips, 'component');
+            }
+          }
+      } else {
+         // Already selected. If we click again, show info if not already editing
+         if (activePanel.type !== 'EDITOR' || activePanel.componentId !== clickedComp.id) {
+             const info = COMPONENT_INFO[clickedComp.type];
+             if (info) {
+                 showInfo(info.title, info.description, info.tips, 'component');
+             }
+         }
+      }
+
       setIsDraggingComponents(true);
       setDragStartMouse(pt);
     } else {
@@ -406,8 +452,6 @@ export default function App() {
         const scaleBy = newDist / pinchDist;
         const newZoom = Math.max(0.2, Math.min(5, view.zoom * scaleBy));
         
-        // Simple zoom to center of screen for stability during pinch
-        // (Improving this to zoom to centroid of pinch is better but complex for this snippet)
         setView(prev => ({ ...prev, zoom: newZoom }));
         setPinchDist(newDist);
         return;
@@ -488,6 +532,13 @@ export default function App() {
     setComponents(remainingComponents);
     setWires(remainingWires);
     setSelectedIds(new Set());
+    
+    // If the active panel belonged to a deleted component, close it
+    if (activePanel.type === 'EDITOR' || activePanel.type === 'PINOUT') {
+        if (!remainingComponents.find(c => c.id === activePanel.componentId)) {
+            closePanel();
+        }
+    }
   };
 
   const rotateSelection = () => {
@@ -505,34 +556,10 @@ export default function App() {
 
   // Called via gear icon
   const handleComponentEdit = (comp: ComponentData) => {
-    setEditingResistorId(null);
-    setEditingLEDId(null);
-    setEditingCapacitorId(null);
-    setEditingACSourceId(null);
-    setEditingPotentiometerId(null);
-    setEditingMultimeterId(null);
-    setViewingIC555Id(null);
-
-    if (comp.type === ComponentType.Resistor) {
-        setEditingResistorId(comp.id);
-    }
-    else if (comp.type === ComponentType.LED) {
-        setEditingLEDId(comp.id);
-    }
-    else if (comp.type === ComponentType.Capacitor) {
-        setEditingCapacitorId(comp.id);
-    }
-    else if (comp.type === ComponentType.ACSource) {
-        setEditingACSourceId(comp.id);
-    }
-    else if (comp.type === ComponentType.Potentiometer) {
-        setEditingPotentiometerId(comp.id);
-    }
-    else if (comp.type === ComponentType.Multimeter) {
-        setEditingMultimeterId(comp.id);
-    }
-    else if (comp.type === ComponentType.IC555) {
-        setViewingIC555Id(comp.id);
+    if (comp.type === ComponentType.IC555) {
+        setActivePanel({ type: 'PINOUT', componentId: comp.id });
+    } else {
+        setActivePanel({ type: 'EDITOR', componentId: comp.id });
     }
   };
 
@@ -574,38 +601,44 @@ export default function App() {
   };
 
   const handleMultimeterSizeChange = (size: 'standard' | 'large') => {
-      if (!editingMultimeterId) return;
+      if (activePanel.type !== 'EDITOR') return;
+      const id = activePanel.componentId;
       saveToHistory();
-      setComponents(prev => prev.map(c => c.id === editingMultimeterId ? { ...c, properties: { ...c.properties, size } } : c));
+      setComponents(prev => prev.map(c => c.id === id ? { ...c, properties: { ...c.properties, size } } : c));
   };
 
   const handleResistorEdit = (newBands: ResistorBandColor[]) => {
-    if (!editingResistorId) return;
+    if (activePanel.type !== 'EDITOR') return;
+    const id = activePanel.componentId;
     saveToHistory();
-    setComponents(prev => prev.map(c => c.id === editingResistorId ? { ...c, properties: { ...c.properties, bands: newBands } } : c));
+    setComponents(prev => prev.map(c => c.id === id ? { ...c, properties: { ...c.properties, bands: newBands } } : c));
   };
 
   const handleLEDEdit = (newColor: string) => {
-    if (!editingLEDId) return;
+    if (activePanel.type !== 'EDITOR') return;
+    const id = activePanel.componentId;
     saveToHistory();
-    setComponents(prev => prev.map(c => c.id === editingLEDId ? { ...c, properties: { ...c.properties, color: newColor } } : c));
+    setComponents(prev => prev.map(c => c.id === id ? { ...c, properties: { ...c.properties, color: newColor } } : c));
   };
 
   const handleCapacitorEdit = (newCap: number, isElectrolytic: boolean) => {
-    if (!editingCapacitorId) return;
+    if (activePanel.type !== 'EDITOR') return;
+    const id = activePanel.componentId;
     saveToHistory();
-    setComponents(prev => prev.map(c => c.id === editingCapacitorId ? { ...c, properties: { ...c.properties, capacitance: newCap, isElectrolytic } } : c));
+    setComponents(prev => prev.map(c => c.id === id ? { ...c, properties: { ...c.properties, capacitance: newCap, isElectrolytic } } : c));
   };
   
   const handleACSourceEdit = (voltage: number, frequency: number) => {
-    if (!editingACSourceId) return;
+    if (activePanel.type !== 'EDITOR') return;
+    const id = activePanel.componentId;
     saveToHistory();
-    setComponents(prev => prev.map(c => c.id === editingACSourceId ? { ...c, properties: { ...c.properties, peakVoltage: voltage, frequency } } : c));
+    setComponents(prev => prev.map(c => c.id === id ? { ...c, properties: { ...c.properties, peakVoltage: voltage, frequency } } : c));
   };
 
   const handlePotentiometerEdit = (totalResistance: number, wiperPosition: number) => {
-    if (!editingPotentiometerId) return;
-    setComponents(prev => prev.map(c => c.id === editingPotentiometerId ? { ...c, properties: { ...c.properties, totalResistance, wiperPosition } } : c));
+    if (activePanel.type !== 'EDITOR') return;
+    const id = activePanel.componentId;
+    setComponents(prev => prev.map(c => c.id === id ? { ...c, properties: { ...c.properties, totalResistance, wiperPosition } } : c));
   };
 
   // Keyboard
@@ -629,7 +662,7 @@ export default function App() {
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [selectedIds, history, components, wires, isDraggingComponents]);
+  }, [selectedIds, history, components, wires, isDraggingComponents, activePanel]);
 
   // AI
   const askAI = async () => {
@@ -886,17 +919,18 @@ export default function App() {
   }, [wires, components, obstacleMap, isSimulating, isDraggingComponents, selectedIds, wireNetStatus, supplyVoltage, isDark]);
 
   return (
-    <div className={`flex h-screen flex-col font-sans transition-colors duration-300 ${isDark ? 'bg-lab-dark text-slate-200' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`flex h-[100dvh] flex-col font-sans transition-colors duration-300 ${isDark ? 'bg-lab-dark text-slate-200' : 'bg-slate-50 text-slate-900'}`}>
       
       {/* Header */}
       <div className={`h-14 border-b flex items-center justify-between px-6 z-20 select-none ${isDark ? 'bg-lab-panel border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="flex items-center space-x-2">
             <div className={`w-8 h-8 rounded flex items-center justify-center font-bold ${isDark ? 'bg-lab-accent text-black' : 'bg-blue-600 text-white'}`}>EL</div>
-            <h1 className="text-xl font-bold tracking-tight">{t.title}</h1>
+            <h1 className="text-xl font-bold tracking-tight hidden sm:block">{t.title}</h1>
         </div>
         
         <div className="flex space-x-2 items-center">
-             {/* Interaction Mode Toggles (Mobile/Tablet Support) */}
+             
+             {/* Interaction Mode Toggles */}
              <div className="flex bg-slate-800 rounded p-1 mr-2 border border-slate-700">
                 <button 
                     onClick={() => setInteractionMode('select')}
@@ -914,23 +948,60 @@ export default function App() {
                 </button>
             </div>
 
-            {/* Lang Toggle */}
-            <button onClick={() => setLang(l => l === 'en' ? 'es' : 'en')} className={`p-2 rounded hover:bg-black/10 flex items-center gap-1 text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                <Globe size={16}/> {lang.toUpperCase()}
-            </button>
-            {/* Theme Toggle */}
-            <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className={`p-2 rounded hover:bg-black/10 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                {isDark ? <Sun size={18}/> : <Moon size={18}/>}
-            </button>
+            <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
+
+            {/* Simulation Controls (New Location) */}
+            <div className={`flex items-center space-x-3 px-3`}>
+                
+                {/* Voltage Source Control */}
+                <div className={`flex items-center space-x-2 bg-slate-800/50 rounded px-2 py-1 border ${isDark ? 'border-slate-700' : 'border-slate-300'}`} title={t.voltageSource}>
+                    <Zap size={14} className="text-yellow-500" fill="currentColor" />
+                    <input 
+                        type="range" 
+                        min="0" max="24" step="0.5" 
+                        value={supplyVoltage}
+                        onChange={(e) => setSupplyVoltage(parseFloat(e.target.value))}
+                        className={`w-16 h-1.5 rounded-lg appearance-none cursor-pointer ${isDark ? 'bg-slate-600' : 'bg-slate-300'} accent-lab-accent`}
+                    />
+                    <span className={`text-xs font-mono font-bold w-9 text-right ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        {supplyVoltage.toFixed(1)}V
+                    </span>
+                </div>
+
+                {/* Multimeter Quick Add */}
+                <button 
+                    onClick={() => addComponent(ComponentType.Multimeter)}
+                    className={`p-1.5 rounded-md transition-all ${isDark ? 'hover:bg-slate-700 text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-600 hover:text-black'}`}
+                    title={t.addMultimeter}
+                >
+                    <Gauge size={20} />
+                </button>
+
+                {/* Simulation Play/Stop */}
+                <button 
+                    onClick={() => setIsSimulating(!isSimulating)}
+                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-md font-bold text-xs transition-all shadow-sm ${
+                        isSimulating 
+                        ? 'bg-red-500 text-white hover:bg-red-600 shadow-red-500/20' 
+                        : 'bg-green-600 text-white hover:bg-green-500 shadow-green-500/20'
+                    }`}
+                    title={isSimulating ? t.stopSim : t.startSim}
+                >
+                    {isSimulating ? <Square size={14} fill="currentColor"/> : <Play size={14} fill="currentColor"/>}
+                    <span className="hidden xl:inline">{isSimulating ? "STOP" : "RUN"}</span>
+                </button>
+            </div>
 
             <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
+
+            {/* Existing Tools... */}
 
             <div className="relative">
                 <button 
                     onClick={() => setPresetsMenuOpen(!presetsMenuOpen)}
                     className={`flex items-center space-x-1 px-3 py-1.5 rounded transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-300' : 'hover:bg-slate-100 text-slate-700'}`}
                 >
-                    <BookOpen size={16} /> <span className="text-sm font-medium">{t.presets}</span> <ChevronDown size={14} />
+                    <BookOpen size={16} /> <span className="text-sm font-medium hidden lg:inline">{t.presets}</span> <ChevronDown size={14} />
                 </button>
                 {presetsMenuOpen && (
                     <>
@@ -948,21 +1019,19 @@ export default function App() {
                     </>
                 )}
             </div>
-
-            <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
             
-            <button onClick={() => setShowLabels(!showLabels)} className={`p-2 ${showLabels ? (isDark ? 'text-lab-accent' : 'text-blue-600') : 'text-slate-400'}`} title="Toggle Labels">
+            <button onClick={() => setShowLabels(!showLabels)} className={`p-2 hidden md:block ${showLabels ? (isDark ? 'text-lab-accent' : 'text-blue-600') : 'text-slate-400'}`} title="Toggle Labels">
                 {showLabels ? <Eye size={18} /> : <EyeOff size={18} />}
             </button>
 
             {/* Zoom Controls */}
-            <button onClick={zoomOut} className="p-2 text-slate-400 hover:text-white"><ZoomOut size={18} /></button>
-            <button onClick={zoomIn} className="p-2 text-slate-400 hover:text-white"><ZoomIn size={18} /></button>
-            <button onClick={resetView} className="p-2 text-slate-400 hover:text-white" title="Reset View"><Move size={18} /></button>
+            <button onClick={zoomOut} className="p-2 text-slate-400 hover:text-white hidden sm:block"><ZoomOut size={18} /></button>
+            <button onClick={zoomIn} className="p-2 text-slate-400 hover:text-white hidden sm:block"><ZoomIn size={18} /></button>
+            <button onClick={resetView} className="p-2 text-slate-400 hover:text-white hidden sm:block" title="Reset View"><Move size={18} /></button>
 
             <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
 
-            <button onClick={() => setShowInfoPanel(!showInfoPanel)} className={`p-2 ${showInfoPanel ? (isDark ? 'text-lab-accent' : 'text-blue-600') : 'text-slate-400'}`}><Info size={18} /></button>
+            <button onClick={recallCurrentInfo} className={`p-2 ${activePanel.type === 'INFO' ? (isDark ? 'text-lab-accent' : 'text-blue-600') : 'text-slate-400'}`} title="Info"><Info size={18} /></button>
             <button onClick={undo} disabled={history.length === 0} className="p-2 disabled:opacity-30"><span className="font-bold text-lg">↶</span></button>
             <button onClick={rotateSelection} disabled={selectedIds.size === 0} className="p-2 disabled:opacity-30"><RotateCw size={18} /></button>
             <button onClick={deleteSelection} disabled={selectedIds.size === 0} className="p-2 text-red-400 hover:text-red-500 disabled:opacity-30"><Trash2 size={18} /></button>
@@ -973,12 +1042,20 @@ export default function App() {
                 onClick={() => setAiPanelOpen(!aiPanelOpen)}
                 className={`flex items-center space-x-2 px-3 py-1 rounded-full border transition-all ${aiPanelOpen ? (isDark ? 'bg-lab-accent text-black border-transparent' : 'bg-blue-600 text-white border-transparent') : (isDark ? 'border-slate-600 text-slate-300' : 'border-slate-300 text-slate-600')}`}
             >
-                <Bot size={18} /> <span className="text-sm font-medium">{t.aiTutor}</span>
+                <Bot size={18} /> <span className="text-sm font-medium hidden md:inline">{t.aiTutor}</span>
             </button>
         </div>
       </div>
 
-      {selectedIds.size === 1 && showInfoPanel && <ComponentInfoPanel type={components.find(c => c.id === Array.from(selectedIds)[0])?.type as ComponentType} onClose={() => setShowInfoPanel(false)} />}
+      {activePanel.type === 'INFO' && (
+          <ComponentInfoPanel 
+            title={activePanel.data.title}
+            description={activePanel.data.description}
+            tips={activePanel.data.tips}
+            type={activePanel.data.itemType}
+            onClose={closePanel}
+          />
+      )}
 
       <div className="flex-1 flex overflow-hidden relative">
         <Toolbox onAdd={addComponent} theme={theme} lang={lang} />
@@ -1043,50 +1120,37 @@ export default function App() {
               Pan: Space + Drag or Hand Tool
           </div>
 
-          {editingResistorId && <ResistorEditor bands={components.find(c => c.id === editingResistorId)?.properties.bands || []} onChange={handleResistorEdit} onClose={() => setEditingResistorId(null)} value={formatResistance(calculateResistance(components.find(c => c.id === editingResistorId)?.properties.bands || []))} />}
+          {/* Render Component Editor Panel if active */}
+          {activePanel.type === 'EDITOR' && (() => {
+              const comp = components.find(c => c.id === activePanel.componentId);
+              if (!comp) return null; // Component might have been deleted
 
-          {editingLEDId && <LEDEditor color={components.find(c => c.id === editingLEDId)?.properties.color || 'red'} onChange={handleLEDEdit} onClose={() => setEditingLEDId(null)} lang={lang} />}
-          
-          {editingCapacitorId && <CapacitorEditor capacitance={components.find(c => c.id === editingCapacitorId)?.properties.capacitance || 10} isElectrolytic={!!components.find(c => c.id === editingCapacitorId)?.properties.isElectrolytic} onChange={handleCapacitorEdit} onClose={() => setEditingCapacitorId(null)} lang={lang} />}
+              switch(comp.type) {
+                  case ComponentType.Resistor:
+                      return <ResistorEditor bands={comp.properties.bands || []} onChange={handleResistorEdit} onClose={closePanel} value={formatResistance(calculateResistance(comp.properties.bands || []))} />;
+                  case ComponentType.LED:
+                      return <LEDEditor color={comp.properties.color || 'red'} onChange={handleLEDEdit} onClose={closePanel} lang={lang} />;
+                  case ComponentType.Capacitor:
+                      return <CapacitorEditor capacitance={comp.properties.capacitance || 10} isElectrolytic={!!comp.properties.isElectrolytic} onChange={handleCapacitorEdit} onClose={closePanel} lang={lang} />;
+                  case ComponentType.ACSource:
+                      return <ACSourceEditor voltage={comp.properties.peakVoltage || 220} frequency={comp.properties.frequency || 60} onChange={handleACSourceEdit} onClose={closePanel} lang={lang} />;
+                  case ComponentType.Potentiometer:
+                      return <PotentiometerEditor totalResistance={comp.properties.totalResistance || 10000} wiperPosition={comp.properties.wiperPosition ?? 50} onChange={handlePotentiometerEdit} onClose={closePanel} lang={lang} />;
+                  case ComponentType.Multimeter:
+                      return <MultimeterEditor size={comp.properties.size || 'standard'} onChange={handleMultimeterSizeChange} onClose={closePanel} lang={lang} />;
+                  default: return null;
+              }
+          })()}
 
-          {editingACSourceId && <ACSourceEditor voltage={components.find(c => c.id === editingACSourceId)?.properties.peakVoltage || 220} frequency={components.find(c => c.id === editingACSourceId)?.properties.frequency || 60} onChange={handleACSourceEdit} onClose={() => setEditingACSourceId(null)} lang={lang} />}
-
-          {editingPotentiometerId && <PotentiometerEditor totalResistance={components.find(c => c.id === editingPotentiometerId)?.properties.totalResistance || 10000} wiperPosition={components.find(c => c.id === editingPotentiometerId)?.properties.wiperPosition ?? 50} onChange={handlePotentiometerEdit} onClose={() => setEditingPotentiometerId(null)} lang={lang} />}
-
-          {editingMultimeterId && <MultimeterEditor size={components.find(c => c.id === editingMultimeterId)?.properties.size || 'standard'} onChange={handleMultimeterSizeChange} onClose={() => setEditingMultimeterId(null)} lang={lang} />}
-          
-          {viewingIC555Id && <IC555Pinout onClose={() => setViewingIC555Id(null)} lang={lang} />}
-
-          {/* Preset Explanation Modal */}
-          {presetInfo && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-                  <div className={`w-[500px] p-0 rounded-lg shadow-2xl overflow-hidden border ${isDark ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-300'}`}>
-                      <div className={`px-6 py-4 flex justify-between items-start border-b ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-                          <div>
-                              <h2 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{presetInfo.title}</h2>
-                              <span className={`text-xs uppercase tracking-widest font-bold ${isDark ? 'text-lab-accent' : 'text-blue-600'}`}>Circuit Guide</span>
-                          </div>
-                          <button onClick={() => setPresetInfo(null)} className="text-slate-500 hover:text-red-500 transition-colors">
-                              <X size={24} />
-                          </button>
-                      </div>
-                      <div className="p-6">
-                          <p className={`text-base leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {presetInfo.description}
-                          </p>
-                          <div className={`mt-6 p-4 rounded-md text-sm border-l-4 ${isDark ? 'bg-blue-900/20 border-blue-500 text-blue-200' : 'bg-blue-50 border-blue-500 text-blue-800'}`}>
-                              <strong>Tip:</strong> Double click switches to toggle them. Hover over components to see values.
-                          </div>
-                          <button 
-                              onClick={() => setPresetInfo(null)}
-                              className={`mt-6 w-full py-2 rounded-md font-bold transition-colors ${isDark ? 'bg-lab-accent text-black hover:bg-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                          >
-                              Start Experimenting
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          )}
+          {/* Render Pinout Panel if active */}
+          {activePanel.type === 'PINOUT' && (() => {
+               const comp = components.find(c => c.id === activePanel.componentId);
+               if (!comp) return null;
+               if (comp.type === ComponentType.IC555) {
+                   return <IC555Pinout onClose={closePanel} lang={lang} />;
+               }
+               return null;
+          })()}
 
           {aiPanelOpen && (
               <div className={`absolute top-0 right-0 h-full w-80 border-l shadow-2xl z-40 flex flex-col p-4 animate-slide-in ${isDark ? 'bg-lab-panel border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -1131,7 +1195,6 @@ export default function App() {
         )}
       </div>
 
-      <Instruments voltage={supplyVoltage} setVoltage={setSupplyVoltage} isSimulating={isSimulating} toggleSimulation={() => setIsSimulating(!isSimulating)} onAddMultimeter={() => addComponent(ComponentType.Multimeter)} theme={theme} lang={lang} />
     </div>
   );
 }
