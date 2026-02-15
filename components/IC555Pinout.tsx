@@ -11,20 +11,20 @@ export const IC555Pinout: React.FC<Props> = ({ onClose, lang }) => {
   const t = TRANSLATIONS[lang];
 
   const pins = [
-      { id: 1, name: "GND", desc: "Ground (0V)" },
-      { id: 2, name: "TRIG", desc: "Trigger (Sets Output High if < 1/3 Vcc)" },
-      { id: 3, name: "OUT", desc: "Output Voltage" },
-      { id: 4, name: "RESET", desc: "Active Low Reset" },
-      { id: 8, name: "VCC", desc: "Supply Voltage (+)" },
-      { id: 7, name: "DIS", desc: "Discharge (Shorts to Ground when Output Low)" },
-      { id: 6, name: "THR", desc: "Threshold (Sets Output Low if > 2/3 Vcc)" },
-      { id: 5, name: "CTRL", desc: "Control Voltage (Internally 2/3 Vcc)" }
+      { id: 1, name: "GND", desc: t.pinDesc.gnd },
+      { id: 2, name: "TRIG", desc: t.pinDesc.trig },
+      { id: 3, name: "OUT", desc: t.pinDesc.out },
+      { id: 4, name: "RESET", desc: t.pinDesc.rst },
+      { id: 8, name: "VCC", desc: t.pinDesc.vcc },
+      { id: 7, name: "DIS", desc: t.pinDesc.dis },
+      { id: 6, name: "THR", desc: t.pinDesc.thr },
+      { id: 5, name: "CTRL", desc: t.pinDesc.ctrl }
   ];
 
   return (
     <div className="absolute top-20 right-4 bg-lab-panel border border-slate-600 p-4 rounded-lg shadow-xl z-50 w-80 flex flex-col animate-fade-in">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-white font-bold">{t.ic555Pinout || "IC 555 Pinout"}</h3>
+        <h3 className="text-white font-bold">{t.ic555Pinout}</h3>
         <button onClick={onClose} className="text-slate-400 hover:text-white">&times;</button>
       </div>
 

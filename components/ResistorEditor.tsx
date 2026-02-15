@@ -1,12 +1,14 @@
+
 import React from 'react';
 import { ResistorBandColor } from '../types';
-import { BAND_COLORS } from '../constants';
+import { BAND_COLORS, TRANSLATIONS } from '../constants';
 
 interface Props {
   bands: ResistorBandColor[];
   onChange: (newBands: ResistorBandColor[]) => void;
   onClose: () => void;
   value: string;
+  lang: 'en' | 'es';
 }
 
 const colors: ResistorBandColor[] = [
@@ -14,19 +16,16 @@ const colors: ResistorBandColor[] = [
   'green', 'blue', 'violet', 'gray', 'white', 'gold', 'silver'
 ];
 
-export const ResistorEditor: React.FC<Props> = ({ bands, onChange, onClose, value }) => {
+export const ResistorEditor: React.FC<Props> = ({ bands, onChange, onClose, value, lang }) => {
   const isFiveBand = bands.length === 5;
+  const t = TRANSLATIONS[lang];
 
   const handleModeChange = (fiveBand: boolean) => {
     if (fiveBand && !isFiveBand) {
-        // Convert 4 to 5: Add a digit (black) before multiplier
-        // 4 band: [d1, d2, mult, tol]
-        // 5 band: [d1, d2, d3(new), mult, tol]
         const newBands = [...bands];
         newBands.splice(2, 0, 'black');
         onChange(newBands);
     } else if (!fiveBand && isFiveBand) {
-        // Convert 5 to 4: Remove 3rd digit
         const newBands = [...bands];
         newBands.splice(2, 1);
         onChange(newBands);
@@ -41,24 +40,24 @@ export const ResistorEditor: React.FC<Props> = ({ bands, onChange, onClose, valu
 
   const getBandLabel = (index: number) => {
       if (!isFiveBand) {
-          if (index === 0) return "1st Digit";
-          if (index === 1) return "2nd Digit";
-          if (index === 2) return "Multiplier";
-          if (index === 3) return "Tolerance";
+          if (index === 0) return t.band1;
+          if (index === 1) return t.band2;
+          if (index === 2) return t.multiplier;
+          if (index === 3) return t.tolerance;
       } else {
-          if (index === 0) return "1st Digit";
-          if (index === 1) return "2nd Digit";
-          if (index === 2) return "3rd Digit";
-          if (index === 3) return "Multiplier";
-          if (index === 4) return "Tolerance";
+          if (index === 0) return t.band1;
+          if (index === 1) return t.band2;
+          if (index === 2) return t.band3;
+          if (index === 3) return t.multiplier;
+          if (index === 4) return t.tolerance;
       }
-      return `Band ${index + 1}`;
+      return `${t.bandGeneric} ${index + 1}`;
   };
 
   return (
     <div className="absolute top-20 right-4 bg-lab-panel border border-slate-600 p-4 rounded-lg shadow-xl z-50 w-72 flex flex-col max-h-[85vh]">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-white font-bold">Resistor Builder</h3>
+        <h3 className="text-white font-bold">{t.resistorBuilder}</h3>
         <button onClick={onClose} className="text-slate-400 hover:text-white">&times;</button>
       </div>
 
@@ -68,13 +67,13 @@ export const ResistorEditor: React.FC<Props> = ({ bands, onChange, onClose, valu
             onClick={() => handleModeChange(false)}
             className={`flex-1 text-xs font-bold py-1.5 rounded transition-colors ${!isFiveBand ? 'bg-lab-accent text-black' : 'text-slate-400 hover:text-white'}`}
           >
-              4 BANDS
+              {t.bands4}
           </button>
           <button 
             onClick={() => handleModeChange(true)}
             className={`flex-1 text-xs font-bold py-1.5 rounded transition-colors ${isFiveBand ? 'bg-lab-accent text-black' : 'text-slate-400 hover:text-white'}`}
           >
-              5 BANDS
+              {t.bands5}
           </button>
       </div>
       

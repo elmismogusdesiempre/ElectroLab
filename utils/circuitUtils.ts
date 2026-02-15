@@ -211,7 +211,6 @@ export const solveCircuit = (
             const n = pinToNet.get(getPinKey(c.id, 'gnd'));
             if (n !== undefined) groundNets.add(n);
         }
-        // 555 Pin 1 is also a ground reference usually, but for solving, we need explicit ground component
     });
 
     const refNet = groundNets.size > 0 ? Array.from(groundNets)[0] : -1;
@@ -230,6 +229,7 @@ export const solveCircuit = (
     };
 
     const voltageSources: VoltageSourceInfo[] = [];
+    const logicTypes = [ComponentType.ANDGate, ComponentType.ORGate, ComponentType.NOTGate, ComponentType.NANDGate, ComponentType.NORGate, ComponentType.XORGate];
 
     // Identify Voltage Sources
     components.forEach(c => {
@@ -245,6 +245,21 @@ export const solveCircuit = (
             const nNeg = getNet(c.id, 'black');
             if (nPos !== -1 && nNeg !== -1) {
                 voltageSources.push({ id: c.id, nPos, nNeg, voltage: 0, index: 0 });
+            }
+        }
+        // Logic Gates Output Driving
+        if (logicTypes.includes(c.type)) {
+            const nOut = getNet(c.id, 'out');
+            if (nOut !== -1 && refNet !== -1) {
+                 const isHigh = c.properties.outputHigh === true;
+                 // Model Logic Output as a voltage source relative to Circuit Ground
+                 voltageSources.push({
+                     id: `${c.id}_logic_out`,
+                     nPos: nOut,
+                     nNeg: refNet,
+                     voltage: isHigh ? supplyVoltage : 0.05, // Small offset for Low
+                     index: 0
+                 });
             }
         }
         // IC555 Output Pin Driving High/Low

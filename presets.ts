@@ -18,12 +18,17 @@ const w = (id: string, from: string, fromPin: string, to: string, toPin: string)
   id, fromCompId: from, fromPinId: fromPin, toCompId: to, toPinId: toPin
 });
 
-export const PRESETS: Preset[] = [
+export const getPresets = (lang: 'en' | 'es'): Preset[] => {
+  const isEs = lang === 'es';
+  
+  return [
   // --- BASICS ---
   {
     id: 'basic-led',
-    name: '1. Basic LED Circuit',
-    description: "The 'Hello World' of electronics. This circuit demonstrates the minimal requirements to light an LED safely. It uses a DC Voltage Source to provide power, and a Resistor to limit the current flowing through the LED, preventing it from burning out. Observe how the LED only lights up when the circuit is closed.",
+    name: isEs ? '1. Circuito LED Básico' : '1. Basic LED Circuit',
+    description: isEs 
+        ? "El 'Hola Mundo' de la electrónica. Demuestra lo mínimo para encender un LED: Fuente DC y Resistencia limitadora. El LED solo enciende si el circuito está cerrado." 
+        : "The 'Hello World' of electronics. This circuit demonstrates the minimal requirements to light an LED safely. It uses a DC Voltage Source to provide power, and a Resistor to limit the current flowing through the LED.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('res', ComponentType.Resistor, 300, 300, 0, { bands: ['red', 'red', 'brown', 'gold'] }), // 220 Ohm
@@ -39,8 +44,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'series-resistors',
-    name: '2. Series Resistors',
-    description: "Demonstrates Kirchhoff's Voltage Law. In a series circuit, current is constant throughout, but voltage drops across each component. The total resistance is the sum of all individual resistors (R_total = R1 + R2). Notice how the LED might be dimmer compared to a single resistor circuit if the total resistance is high.",
+    name: isEs ? '2. Resistencias en Serie' : '2. Series Resistors',
+    description: isEs
+        ? "Ley de Voltaje de Kirchhoff. En serie, la corriente es constante, pero el voltaje cae en cada componente. R_total = R1 + R2."
+        : "Demonstrates Kirchhoff's Voltage Law. In a series circuit, current is constant throughout, but voltage drops across each component. The total resistance is the sum of all individual resistors (R_total = R1 + R2).",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('r1', ComponentType.Resistor, 250, 270, 0, { bands: ['brown', 'black', 'red', 'gold'] }), // 1k
@@ -58,8 +65,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'parallel-resistors',
-    name: '3. Parallel Resistors',
-    description: "Demonstrates Kirchhoff's Current Law. In parallel, voltage across each branch is the same, but the current splits. The total resistance decreases because there are more paths for current to flow. The equivalent resistance is calculated as 1 / (1/R1 + 1/R2).",
+    name: isEs ? '3. Resistencias en Paralelo' : '3. Parallel Resistors',
+    description: isEs
+        ? "Ley de Corriente de Kirchhoff. En paralelo, el voltaje es igual, pero la corriente se divide. La resistencia total disminuye."
+        : "Demonstrates Kirchhoff's Current Law. In parallel, voltage across each branch is the same, but the current splits. The total resistance decreases because there are more paths for current to flow.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('r1', ComponentType.Resistor, 300, 200, 0, { bands: ['red', 'red', 'red', 'gold'] }), // 2.2k
@@ -81,8 +90,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'parallel-leds',
-    name: '4. Parallel LEDs',
-    description: "Two LEDs connected in parallel sharing the same source. Note that in real life, sharing a single resistor for parallel LEDs is bad practice because slight manufacturing differences can cause one LED to hog all the current. Here, we use a single resistor before the split for simplicity to show they both light up.",
+    name: isEs ? '4. LEDs en Paralelo' : '4. Parallel LEDs',
+    description: isEs
+        ? "Dos LEDs compartiendo fuente. En la vida real, compartir una resistencia para LEDs en paralelo no es ideal, pero aquí mostramos el concepto."
+        : "Two LEDs connected in parallel sharing the same source. Note that in real life, sharing a single resistor for parallel LEDs is bad practice because slight manufacturing differences can cause one LED to hog all the current.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('r1', ComponentType.Resistor, 250, 300, 0, { bands: ['red', 'red', 'brown', 'gold'] }),
@@ -101,8 +112,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'voltage-divider',
-    name: '5. Voltage Divider',
-    description: "A fundamental circuit used to create a reference voltage. By using two resistors in series, the output voltage between them is a fraction of the input voltage. Formula: V_out = V_in * (R2 / (R1 + R2)). Use the multimeter to verify the voltage at the midpoint!",
+    name: isEs ? '5. Divisor de Voltaje' : '5. Voltage Divider',
+    description: isEs
+        ? "Crea un voltaje de referencia usando dos resistencias en serie. V_out = V_in * (R2 / (R1 + R2)). ¡Usa el multímetro para medir!"
+        : "A fundamental circuit used to create a reference voltage. By using two resistors in series, the output voltage between them is a fraction of the input voltage. Formula: V_out = V_in * (R2 / (R1 + R2)).",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('r1', ComponentType.Resistor, 300, 200, 90, { bands: ['brown', 'black', 'red', 'gold'] }), // 1k top
@@ -124,8 +137,10 @@ export const PRESETS: Preset[] = [
   // --- CAPACITORS ---
   {
     id: 'capacitors-series',
-    name: '6. Capacitors in Series',
-    description: "When capacitors are placed in series, the total capacitance DECREASES (1/C_total = 1/C1 + 1/C2), but the voltage rating of the combined bank increases. This circuit uses an AC source to show that AC current can 'pass through' capacitors (via charging/discharging), lighting the LED.",
+    name: isEs ? '6. Condensadores en Serie' : '6. Capacitors in Series',
+    description: isEs
+        ? "La capacitancia total disminuye en serie. Este circuito usa AC para mostrar que la corriente alterna puede 'pasar' cargando y descargando."
+        : "When capacitors are placed in series, the total capacitance DECREASES (1/C_total = 1/C1 + 1/C2). This circuit uses an AC source to show that AC current can 'pass through' capacitors.",
     components: [
       c('ac', ComponentType.ACSource, 100, 300, 0, { peakVoltage: 10, frequency: 10 }),
       c('c1', ComponentType.Capacitor, 250, 300, 0, { capacitance: 100, isElectrolytic: true }),
@@ -143,8 +158,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'capacitors-parallel',
-    name: '7. Capacitors in Parallel',
-    description: "Capacitors in parallel add up their capacitance directly (C_total = C1 + C2). They act like a larger single tank for energy storage. Open the switch and observe how the LED fades out slowly as the parallel capacitors discharge their stored energy.",
+    name: isEs ? '7. Condensadores en Paralelo' : '7. Capacitors in Parallel',
+    description: isEs
+        ? "En paralelo, la capacitancia se suma. Actúan como un tanque más grande. Abre el interruptor y mira cómo el LED se apaga lentamente."
+        : "Capacitors in parallel add up their capacitance directly (C_total = C1 + C2). They act like a larger single tank for energy storage. Open the switch and observe how the LED fades out slowly.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('sw', ComponentType.Switch, 200, 300, 0, { isOpen: true }),
@@ -171,8 +188,10 @@ export const PRESETS: Preset[] = [
   // --- LOGIC GATES ---
   {
     id: 'logic-nand',
-    name: '8. Logic NAND',
-    description: "The NAND (Not-AND) gate is a universal logic gate. The output is LOW (0) only if ALL inputs are HIGH (1). In all other cases, the output is HIGH. Try toggling the switches to see the truth table in action.",
+    name: isEs ? '8. Lógica NAND' : '8. Logic NAND',
+    description: isEs
+        ? "Compuerta Universal. Salida BAJA (0) solo si TODAS las entradas son ALTAS (1). Prueba los interruptores."
+        : "The NAND (Not-AND) gate is a universal logic gate. The output is LOW (0) only if ALL inputs are HIGH (1). In all other cases, the output is HIGH.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('sw1', ComponentType.Switch, 250, 200, 0, { isOpen: true }),
@@ -193,8 +212,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'logic-nor',
-    name: '9. Logic NOR',
-    description: "The NOR (Not-OR) gate outputs HIGH (1) only if ALL inputs are LOW (0). If any input is HIGH, the output goes LOW. This is another universal gate type often used in digital memory latches.",
+    name: isEs ? '9. Lógica NOR' : '9. Logic NOR',
+    description: isEs
+        ? "Salida ALTA (1) solo si TODAS las entradas son BAJAS (0). Si cualquiera es alta, la salida cae."
+        : "The NOR (Not-OR) gate outputs HIGH (1) only if ALL inputs are LOW (0). If any input is HIGH, the output goes LOW.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('sw1', ComponentType.Switch, 250, 200, 0, { isOpen: true }),
@@ -215,8 +236,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'logic-xor',
-    name: '10. Logic XOR',
-    description: "The XOR (Exclusive-OR) gate outputs HIGH (1) if the inputs are DIFFERENT. If both are 0 or both are 1, the output is 0. This logic is crucial for arithmetic circuits (like adders) in computers.",
+    name: isEs ? '10. Lógica XOR' : '10. Logic XOR',
+    description: isEs
+        ? "Salida ALTA (1) si las entradas son DIFERENTES. Crucial para sumadores en computación."
+        : "The XOR (Exclusive-OR) gate outputs HIGH (1) if the inputs are DIFFERENT. If both are 0 or both are 1, the output is 0.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('sw1', ComponentType.Switch, 250, 200, 0, { isOpen: true }),
@@ -239,8 +262,10 @@ export const PRESETS: Preset[] = [
   // --- SEMICONDUCTORS & ACTIVE ---
   {
     id: 'transistor-switch',
-    name: '11. NPN Transistor Switch',
-    description: "A transistor allows a small current (Base-Emitter) to control a much larger current (Collector-Emitter). Here, the switch activates the Base, allowing current to flow through the LED connected to the Collector. This is the foundation of digital logic and power control.",
+    name: isEs ? '11. Interruptor Transistor NPN' : '11. NPN Transistor Switch',
+    description: isEs
+        ? "El transistor permite que una pequeña corriente (Base) controle una mayor (Colector). Aquí, el interruptor activa la Base."
+        : "A transistor allows a small current (Base-Emitter) to control a much larger current (Collector-Emitter). Here, the switch activates the Base.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       // Control Circuit
@@ -268,8 +293,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'bridge-rectifier',
-    name: '12. Full Wave Bridge Rectifier',
-    description: "This clever arrangement of 4 diodes converts AC (Alternating Current), which swings positive and negative, into pulsating DC (Direct Current) which only flows one way. Follow the animated current dots to see how the path changes during each half of the AC cycle, but always enters the resistor in the same direction.",
+    name: isEs ? '12. Puente Rectificador' : '12. Full Wave Bridge Rectifier',
+    description: isEs
+        ? "Convierte AC (que oscila positivo/negativo) en DC pulsante (solo una dirección). Observa la animación de la corriente."
+        : "This arrangement of 4 diodes converts AC (Alternating Current) into pulsating DC (Direct Current) which only flows one way.",
     components: [
       c('ac', ComponentType.ACSource, 100, 300, 0, { peakVoltage: 12, frequency: 2 }), // Low freq to see animation
       // Bridge Diodes
@@ -303,8 +330,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'pot-control',
-    name: '13. Potentiometer Control',
-    description: "Using a potentiometer as a variable voltage divider allows you to send an analog signal (0-5V) to the Base of a transistor. As you move the wiper, the base voltage increases, turning the transistor 'more ON' (in its active region), which makes the LED brighter.",
+    name: isEs ? '13. Control con Potenciómetro' : '13. Potentiometer Control',
+    description: isEs
+        ? "Usa un potenciómetro como divisor de voltaje variable para enviar una señal analógica (0-5V) a la Base del transistor, controlando el brillo del LED."
+        : "Using a potentiometer as a variable voltage divider allows you to send an analog signal (0-5V) to the Base of a transistor, controlling LED brightness.",
     components: [
       c('bat', ComponentType.VoltageSource, 100, 300),
       c('pot', ComponentType.Potentiometer, 250, 300),
@@ -326,8 +355,10 @@ export const PRESETS: Preset[] = [
   },
   {
     id: '555-astable',
-    name: '14. 555 Timer Astable',
-    description: "The 555 Timer allows us to create oscillations. This configuration is called 'Astable Multivibrator'. Resistors R1, R2 and Capacitor C form a timing network. The capacitor charges through R1+R2 and discharges through R2 only. This cycle triggers the 555 to flip its output ON and OFF repeatedly, flashing the LED.",
+    name: isEs ? '14. Oscilador 555 Astable' : '14. 555 Timer Astable',
+    description: isEs
+        ? "Configuración 'Astable'. La red R1, R2 y C crea un ciclo de carga/descarga que dispara el 555 repetidamente, haciendo parpadear el LED."
+        : "The 555 Timer allows us to create oscillations. This configuration is called 'Astable Multivibrator'. It flips its output ON and OFF repeatedly.",
     components: [
       c('ic', ComponentType.IC555, 400, 300),
       c('bat', ComponentType.VoltageSource, 100, 300),
@@ -360,4 +391,5 @@ export const PRESETS: Preset[] = [
       w('out3', 'r_lim', 'p2', 'gnd', 'gnd')
     ]
   }
-];
+  ];
+};

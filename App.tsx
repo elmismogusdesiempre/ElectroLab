@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { GRID_SIZE, COMPONENT_PINS, TRANSLATIONS, COMPONENT_INFO } from './constants';
+import { GRID_SIZE, COMPONENT_PINS, TRANSLATIONS, getComponentInfo } from './constants';
 import { ComponentData, ComponentType, Wire, Point, ResistorBandColor, Pin } from './types';
 import { generateId, snapToGrid, getPinAbsolutePosition, calculateResistance, formatResistance, formatCapacitance, formatCurrent, getWirePath, createObstacleMap, identifyWireNets, generatePathData, measureResistance, solveCircuit, detectShortCircuit } from './utils/circuitUtils';
 import { ComponentRenderer } from './components/ComponentRenderer';
@@ -15,7 +15,7 @@ import { IC555Pinout } from './components/IC555Pinout';
 import { ComponentInfoPanel } from './components/ComponentInfoPanel';
 import { analyzeCircuit } from './services/geminiService';
 import { RotateCw, Trash2, Bot, MessageSquare, Info, BookOpen, ChevronDown, Sun, Moon, Globe, TriangleAlert, Eye, EyeOff, X, ZoomIn, ZoomOut, Move, Hand, MousePointer2, Play, Square, Gauge, Zap } from 'lucide-react';
-import { PRESETS, Preset } from './presets';
+import { getPresets, Preset } from './presets';
 
 interface DrawingWireState {
     compId: string;
@@ -24,10 +24,10 @@ interface DrawingWireState {
     waypoints: Point[];
 }
 
-// Unified Panel State
+// Unified Panel State - Updated to store IDs for dynamic translation
 type PanelState = 
     | { type: 'NONE' }
-    | { type: 'INFO'; data: { title: string; description: string; tips?: string; itemType: 'component' | 'preset' } }
+    | { type: 'INFO'; entityType: 'component' | 'preset'; entityId: string } 
     | { type: 'EDITOR'; componentId: string }
     | { type: 'PINOUT'; componentId: string };
 
@@ -90,16 +90,18 @@ export default function App() {
 
   const t = TRANSLATIONS[lang];
   const isDark = theme === 'dark';
+  const currentPresets = useMemo(() => getPresets(lang), [lang]);
 
   // --- Helper: Panel Management ---
   const closePanel = useCallback(() => {
       setActivePanel({ type: 'NONE' });
   }, []);
 
-  const showInfo = useCallback((title: string, description: string, tips?: string, itemType: 'component' | 'preset' = 'component') => {
+  const showInfo = useCallback((entityType: 'component' | 'preset', entityId: string) => {
       setActivePanel({
           type: 'INFO',
-          data: { title, description, tips, itemType }
+          entityType,
+          entityId
       });
   }, []);
 
@@ -108,15 +110,12 @@ export default function App() {
           const compId = Array.from(selectedIds)[0];
           const comp = components.find(c => c.id === compId);
           if (comp) {
-              const info = COMPONENT_INFO[comp.type];
-              if (info) {
-                  showInfo(info.title, info.description, info.tips, 'component');
-              }
+              showInfo('component', comp.type);
           }
       } else {
-          showInfo(t.title, "Select a component to see details or choose a preset to load an experiment.", undefined, 'component');
+          // No special default info
       }
-  }, [selectedIds, components, showInfo, t.title]);
+  }, [selectedIds, components, showInfo]);
 
 
   // --- Z-Index / Rendering Order Logic ---
@@ -207,7 +206,7 @@ export default function App() {
       // Reset view to center roughly
       setView({ x: 0, y: 0, zoom: 1 });
 
-      showInfo(preset.name, preset.description, "Tip: Use the 'Info' button to see this again.", 'preset');
+      showInfo('preset', preset.id);
   };
 
   const addComponent = (type: ComponentType) => {
@@ -263,10 +262,7 @@ export default function App() {
     setSelectedIds(new Set([newComp.id]));
 
     // Automatically show info when adding, replacing any open panel
-    const info = COMPONENT_INFO[type];
-    if (info) {
-        showInfo(info.title, info.description, info.tips, 'component');
-    }
+    showInfo('component', type);
   };
   
   const handleRotate = (id: string) => {
@@ -414,18 +410,12 @@ export default function App() {
           setSelectedIds(new Set([clickedComp.id]));
           // Trigger Info Notification on Select, unless it's the one we are already editing
           if (activePanel.type !== 'EDITOR' || activePanel.componentId !== clickedComp.id) {
-            const info = COMPONENT_INFO[clickedComp.type];
-            if (info) {
-                showInfo(info.title, info.description, info.tips, 'component');
-            }
+            showInfo('component', clickedComp.type);
           }
       } else {
          // Already selected. If we click again, show info if not already editing
          if (activePanel.type !== 'EDITOR' || activePanel.componentId !== clickedComp.id) {
-             const info = COMPONENT_INFO[clickedComp.type];
-             if (info) {
-                 showInfo(info.title, info.description, info.tips, 'component');
-             }
+             showInfo('component', clickedComp.type);
          }
       }
 
@@ -554,15 +544,6 @@ export default function App() {
   const zoomOut = () => setView(v => ({ ...v, zoom: Math.max(0.2, v.zoom / 1.2) }));
   const resetView = () => setView({ x: 0, y: 0, zoom: 1 });
 
-  // Called via gear icon
-  const handleComponentEdit = (comp: ComponentData) => {
-    if (comp.type === ComponentType.IC555) {
-        setActivePanel({ type: 'PINOUT', componentId: comp.id });
-    } else {
-        setActivePanel({ type: 'EDITOR', componentId: comp.id });
-    }
-  };
-
   // Called via double click
   const handleComponentToggle = (comp: ComponentData) => {
     if (comp.type === ComponentType.Switch) {
@@ -585,6 +566,19 @@ export default function App() {
             }
             return c;
         }));
+    }
+  };
+
+  // Called via gear icon
+  const handleComponentEdit = (comp: ComponentData) => {
+    if (comp.type === ComponentType.Switch) {
+        handleComponentToggle(comp);
+        return;
+    }
+    if (comp.type === ComponentType.IC555) {
+        setActivePanel({ type: 'PINOUT', componentId: comp.id });
+    } else {
+        setActivePanel({ type: 'EDITOR', componentId: comp.id });
     }
   };
   
@@ -685,7 +679,7 @@ export default function App() {
             setComponents(prev => [...prev, ...newComponents]);
             setWires(prev => [...prev, ...newWires]);
         }
-      } catch (e) { setAiResponse("Error with AI Service"); }
+      } catch (e) { setAiResponse(t.aiError); }
       setIsAiLoading(false);
   };
 
@@ -713,7 +707,7 @@ export default function App() {
           setIsSimulating(false);
           playSafetyAlertSound();
           setSafetyAlert({
-              title: t.safetyAlert.shortCircuit,
+              title: t.safetyAlert.title,
               message: t.safetyAlert.shortCircuitMsg
           });
           return;
@@ -741,6 +735,34 @@ export default function App() {
 
     let changes = false;
     const nextComps = components.map(c => {
+        // Logic Gate Simulation (Only when simulating)
+        const logicTypes = [ComponentType.ANDGate, ComponentType.ORGate, ComponentType.NOTGate, ComponentType.NANDGate, ComponentType.NORGate, ComponentType.XORGate];
+        if (isSimulating && logicTypes.includes(c.type)) {
+            const threshold = supplyVoltage / 2;
+            const in1Info = getPinNetInfo(c.id, 'in1');
+            const in2Info = getPinNetInfo(c.id, 'in2');
+            const inInfo = getPinNetInfo(c.id, 'in'); // For NOT gate
+
+            const val1 = (in1Info?.voltage || 0) > threshold;
+            const val2 = (in2Info?.voltage || 0) > threshold;
+            const val = (inInfo?.voltage || 0) > threshold;
+
+            let outHigh = false;
+            switch(c.type) {
+                case ComponentType.ANDGate: outHigh = val1 && val2; break;
+                case ComponentType.ORGate: outHigh = val1 || val2; break;
+                case ComponentType.NOTGate: outHigh = !val; break;
+                case ComponentType.NANDGate: outHigh = !(val1 && val2); break;
+                case ComponentType.NORGate: outHigh = !(val1 || val2); break;
+                case ComponentType.XORGate: outHigh = val1 !== val2; break;
+            }
+            
+            if (c.properties.outputHigh !== outHigh) {
+                changes = true;
+                return { ...c, properties: { ...c.properties, outputHigh: outHigh } };
+            }
+        }
+
         // LED Physics Simulation (Only when simulating)
         if (isSimulating && c.type === ComponentType.LED) {
             const anode = getPinNetInfo(c.id, 'anode');
@@ -948,6 +970,15 @@ export default function App() {
                 </button>
             </div>
 
+            {/* Lang Toggle */}
+            <button onClick={() => setLang(l => l === 'en' ? 'es' : 'en')} className={`p-2 rounded hover:bg-black/10 flex items-center gap-1 text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                <Globe size={16}/> {lang.toUpperCase()}
+            </button>
+            {/* Theme Toggle */}
+            <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className={`p-2 rounded hover:bg-black/10 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {isDark ? <Sun size={18}/> : <Moon size={18}/>}
+            </button>
+
             <div className={`w-px h-6 mx-2 ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}></div>
 
             {/* Simulation Controls (New Location) */}
@@ -1009,7 +1040,7 @@ export default function App() {
                     <div className={`absolute top-full left-0 mt-2 w-64 border rounded-lg shadow-xl z-50 overflow-hidden ${isDark ? 'bg-lab-panel border-slate-600' : 'bg-white border-slate-200'}`}>
                         <div className={`p-2 border-b text-xs font-bold uppercase tracking-wider ${isDark ? 'bg-slate-800/50 border-slate-700 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>{t.loadCircuit}</div>
                         <div className="max-h-[70vh] overflow-y-auto">
-                            {PRESETS.map((preset) => (
+                            {currentPresets.map((preset) => (
                                 <button key={preset.id} onClick={() => loadPreset(preset)} className={`w-full text-left px-4 py-3 border-b last:border-0 transition-colors ${isDark ? 'hover:bg-slate-700 border-slate-700/50 text-slate-200' : 'hover:bg-slate-50 border-slate-100 text-slate-700'}`}>
                                     <div className="text-sm font-medium">{preset.name}</div>
                                 </button>
@@ -1047,15 +1078,39 @@ export default function App() {
         </div>
       </div>
 
-      {activePanel.type === 'INFO' && (
-          <ComponentInfoPanel 
-            title={activePanel.data.title}
-            description={activePanel.data.description}
-            tips={activePanel.data.tips}
-            type={activePanel.data.itemType}
-            onClose={closePanel}
-          />
-      )}
+      {activePanel.type === 'INFO' && (() => {
+          let title = '';
+          let description = '';
+          let tips = '';
+
+          if (activePanel.entityType === 'component') {
+              const info = getComponentInfo(activePanel.entityId as ComponentType, lang);
+              if (info) {
+                  title = info.title;
+                  description = info.description;
+                  tips = info.tips;
+              }
+          } else if (activePanel.entityType === 'preset') {
+              const preset = currentPresets.find(p => p.id === activePanel.entityId);
+              if (preset) {
+                  title = preset.name;
+                  description = preset.description;
+                  tips = "Tip: Use the 'Info' button to see this again.";
+              }
+          }
+
+          if (!title) return null;
+
+          return (
+            <ComponentInfoPanel 
+                title={title}
+                description={description}
+                tips={tips}
+                type={activePanel.entityType}
+                onClose={closePanel}
+            />
+          );
+      })()}
 
       <div className="flex-1 flex overflow-hidden relative">
         <Toolbox onAdd={addComponent} theme={theme} lang={lang} />
@@ -1093,9 +1148,15 @@ export default function App() {
                         key={comp.id} 
                         onDoubleClick={(e) => { 
                             e.stopPropagation(); 
-                            if (!isSimulating && (comp.type === ComponentType.Switch || comp.type === ComponentType.LED)) {
+                            // Allow Switch toggling ALWAYS (simulating or not)
+                            if (comp.type === ComponentType.Switch) {
+                                handleComponentToggle(comp);
+                            }
+                            // LEDs only manually toggle when NOT simulating (otherwise physics takes over)
+                            else if (!isSimulating && comp.type === ComponentType.LED) {
                                 handleComponentToggle(comp); 
-                            } else if (comp.type === ComponentType.Multimeter) {
+                            } 
+                            else if (comp.type === ComponentType.Multimeter) {
                                 handleComponentToggle(comp);
                             }
                         }}
@@ -1127,7 +1188,7 @@ export default function App() {
 
               switch(comp.type) {
                   case ComponentType.Resistor:
-                      return <ResistorEditor bands={comp.properties.bands || []} onChange={handleResistorEdit} onClose={closePanel} value={formatResistance(calculateResistance(comp.properties.bands || []))} />;
+                      return <ResistorEditor bands={comp.properties.bands || []} onChange={handleResistorEdit} onClose={closePanel} value={formatResistance(calculateResistance(comp.properties.bands || []))} lang={lang} />;
                   case ComponentType.LED:
                       return <LEDEditor color={comp.properties.color || 'red'} onChange={handleLEDEdit} onClose={closePanel} lang={lang} />;
                   case ComponentType.Capacitor:
@@ -1159,10 +1220,10 @@ export default function App() {
                       <button onClick={() => setAiPanelOpen(false)} className="text-slate-500 hover:opacity-75">&times;</button>
                   </div>
                   <div className={`flex-1 rounded-lg p-3 overflow-y-auto mb-4 text-sm whitespace-pre-wrap ${isDark ? 'bg-slate-800/50 text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
-                      {aiResponse || "Hello! Build your circuit..."}
+                      {aiResponse || t.aiIntro}
                   </div>
                   <div className="flex gap-2">
-                      <input className={`flex-1 border rounded px-3 py-2 text-sm focus:outline-none ${isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-black'}`} placeholder="Ask AI..." value={aiQuery} onChange={(e) => setAiQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askAI()} />
+                      <input className={`flex-1 border rounded px-3 py-2 text-sm focus:outline-none ${isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-black'}`} placeholder={t.askAiPlaceholder} value={aiQuery} onChange={(e) => setAiQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askAI()} />
                       <button onClick={askAI} disabled={isAiLoading} className={`p-2 rounded disabled:opacity-50 ${isDark ? 'bg-lab-accent text-black' : 'bg-blue-600 text-white'}`}>
                           {isAiLoading ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> : <MessageSquare size={18} />}
                       </button>
